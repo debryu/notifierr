@@ -32,6 +32,15 @@ for rc in "$HOME/.bashrc" "$HOME/.zshrc"; do
     fi
 done
 
+if [ "$added" -eq 0 ]; then
+    # No rc file existed — create ~/.bashrc as a fallback
+    if ! [ -f "$HOME/.bashrc" ] && ! [ -f "$HOME/.zshrc" ]; then
+        printf '%s\n' "$EXPORT_LINE" > "$HOME/.bashrc"
+        echo "    ~/.bashrc — created"
+        added=1
+    fi
+fi
+
 if [ "$added" -eq 1 ]; then
     echo ""
     echo "    Reload your shell to activate:"
