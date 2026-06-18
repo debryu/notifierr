@@ -3,6 +3,13 @@ set -euo pipefail
 
 REPO_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
+# Install uv if not present
+if ! command -v uv &>/dev/null; then
+    echo "==> uv not found — installing..."
+    curl -LsSf https://astral.sh/uv/install.sh | sh
+    export PATH="$HOME/.local/bin:$PATH"
+fi
+
 echo "==> Installing experiment-notifier..."
 cd "$REPO_DIR"
 uv sync
