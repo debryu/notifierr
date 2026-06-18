@@ -15,18 +15,33 @@ cd "$REPO_DIR"
 uv sync
 
 VENV_BIN="$REPO_DIR/.venv/bin"
+EXPORT_LINE="export PATH=\"$VENV_BIN:\$PATH\"  # experiment-notifier"
 
 echo ""
-echo "==> Done! Add the following to your ~/.bashrc or ~/.zshrc:"
-echo ""
-echo "    export PATH=\"$VENV_BIN:\$PATH\""
-echo ""
-echo "Then reload your shell:"
-echo "    source ~/.bashrc   # or ~/.zshrc"
+echo "==> Adding notify-exp to PATH..."
+added=0
+for rc in "$HOME/.bashrc" "$HOME/.zshrc"; do
+    if [ -f "$rc" ]; then
+        if grep -qF "$VENV_BIN" "$rc"; then
+            echo "    $rc — already set, skipping"
+        else
+            printf '\n%s\n' "$EXPORT_LINE" >> "$rc"
+            echo "    $rc — updated"
+            added=1
+        fi
+    fi
+done
+
+if [ "$added" -eq 1 ]; then
+    echo ""
+    echo "    Reload your shell to activate:"
+    echo "    source ~/.bashrc   # or ~/.zshrc"
+fi
+
 echo ""
 echo "==> Configure credentials (one time per machine):"
 echo "    cp $REPO_DIR/.env.example ~/.notifier.env"
 echo "    \$EDITOR ~/.notifier.env"
 echo ""
-echo "==> Verify it works:"
+echo "==> Verify it works (after reloading shell):"
 echo "    notify-exp test"
