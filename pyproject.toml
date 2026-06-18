@@ -1,0 +1,20 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "experiment-notifier"
+version = "0.1.0"
+description = "Telegram notifications for ML experiments — SLURM and direct runs"
+requires-python = ">=3.9"
+dependencies = [
+    "click>=8.0",
+    "python-dotenv>=1.0",
+    "requests>=2.28",
+]
+
+[project.scripts]
+notify-exp = "notifier.cli:cli"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/notifier"]
