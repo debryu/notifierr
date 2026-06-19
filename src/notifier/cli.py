@@ -1,9 +1,11 @@
+import json
 import os
 import socket
 import subprocess
 import sys
 import time
 from datetime import timedelta
+from pathlib import Path
 
 import click
 
@@ -58,3 +60,71 @@ def test() -> None:
     else:
         click.echo("[notifier] Failed — check your credentials in ~/.notifier.env", err=True)
         sys.exit(1)
+
+
+@cli.command()
+@click.option("--job-id", required=True, help="SLURM job ID to watch")
+@click.option("--queue-dir", default=str(Path.home() / ".notifier_queue"),
+              show_default=True, help="Directory containing queue files")
+@click.option("--interval", default=30, show_default=True, help="Poll interval in seconds")
+def watch(job_id: str, queue_dir: str, interval: int) -> None:
+    """Watch a SLURM job and forward its queued notifications in real time.
+
+    Designed for GPU nodes that have no internet access: the job writes
+    messages to a queue file (~/.notifier_queue/<JOB_ID>.jsonl) and this
+    command, running on the login node, drains the file and sends them to
+    Telegram as they arrive. Sends a final success/failure message when the
+    job ends.
+    """
+    queue_file = Path(queue_dir) / f"{job_id}.jsonl"
+    seen = 0
+
+    click.echo(f"[notifier] Watching job {job_id} (queue: {queue_file}, interval: {interval}s)")
+
+    while True:
+        # Drain any new lines from the queue file
+        if queue_file.exists():
+            lines = queue_file.read_text().splitlines()
+            for line in lines[seen:]:
+                try:
+                    data = json.loads(line)
+                    send_message(data["text"])
+                    click.echo(f"[notifier] Forwarded queued message.")
+                except Exception as e:
+                    click.echo(f"[notifier] Failed to forward message: {e}", err=True)
+            seen = len(lines)
+
+        # Check if the job is still in the queue
+        result = subprocess.run(
+            ["squeue", "-j", job_id, "--noheader"],
+            capture_output=True, text=True,
+        )
+        if job_id not in result.stdout:
+            # Job is gone — do a final drain, then report status via sacct
+            if queue_file.exists():
+                lines = queue_file.read_text().splitlines()
+                for line in lines[seen:]:
+                    try:
+                        data = json.loads(line)
+                        send_message(data["text"])
+                        click.echo(f"[notifier] Forwarded queued message.")
+                    except Exception as e:
+                        click.echo(f"[notifier] Failed to forward message: {e}", err=True)
+
+            time.sleep(5)  # give sacct a moment to register the job
+            sacct = subprocess.run(
+                ["sacct", "-j", job_id, "--format=State", "--noheader", "-P"],
+                capture_output=True, text=True,
+            )
+            state_lines = [
+                l.strip() for l in sacct.stdout.splitlines()
+                if l.strip() and "." not in l
+            ]
+            state = state_lines[0] if state_lines else "UNKNOWN"
+            success = state == "COMPLETED"
+            icon = "✅" if success else "❌"
+            send_message(f"{icon} <b>SLURM job {job_id} {state.lower()}</b>")
+            click.echo(f"[notifier] Job {job_id} finished ({state}). Exiting.")
+            break
+
+        time.sleep(interval)

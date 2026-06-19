@@ -1,5 +1,7 @@
+import json
 import os
 import sys
+import time
 from pathlib import Path
 
 import requests
@@ -33,6 +35,25 @@ def get_config() -> tuple[str, str]:
     return token, chat_id
 
 
+def _queue_path() -> Path | None:
+    """Returns the queue file path when inside a SLURM job, else None."""
+    job_id = os.environ.get("SLURM_JOB_ID")
+    if not job_id:
+        return None
+    queue_dir = Path(os.environ.get("NOTIFIER_QUEUE_DIR", Path.home() / ".notifier_queue"))
+    queue_dir.mkdir(parents=True, exist_ok=True)
+    return queue_dir / f"{job_id}.jsonl"
+
+
+def _queue_message(text: str) -> None:
+    """Append a message to the SLURM job's queue file for the login-node watcher."""
+    path = _queue_path()
+    if path is None:
+        return
+    with open(path, "a") as f:
+        f.write(json.dumps({"ts": time.time(), "text": text}) + "\n")
+
+
 def send_message(text: str) -> bool:
     try:
         token, chat_id = get_config()
@@ -45,5 +66,10 @@ def send_message(text: str) -> bool:
         resp.raise_for_status()
         return True
     except Exception as exc:
-        print(f"[notifier] Failed to send message: {exc}", file=sys.stderr)
+        path = _queue_path()
+        if path is not None:
+            _queue_message(text)
+            print(f"[notifier] No internet (SLURM job) — queued to {path}", file=sys.stderr)
+        else:
+            print(f"[notifier] Failed to send message: {exc}", file=sys.stderr)
         return False
